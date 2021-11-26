@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  app_service:
+    container_name: app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/app
+    restart: always
+    depends_on:
+      - postgres
+      - zook
+      - kafka
+    networks: [ "microservices" ]
+  postgres:
+    image: postgres:13-alpine
+    container_name: postgres
+    ports:
+      - "15432:5432"
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=vehicles
+      - POSTGRES_HOST=5432
+    volumes:
+      - ./microservices_pgdata:/var/lib/postgresql/data
+    networks: [ "microservices" ]
+  zook:
+    image: zookeeper:3.4.9
+    restart: always
+    hostname: zoo1
+    ports:
+      - "12181:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_PORT: 2181
+      ZOO_SERVERS: server.1=zook:2888:3888
+    volumes:
+      - ./zk-single-kafka-single/zoo1/data:/data
+      - ./zk-single-kafka-single/zoo1/datalog:/datalog
+    networks: [ "microservices" ]
+  kafka:
+    image: confluentinc/cp-kafka:5.5.1
+    restart: always
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "19999:9999"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka:19092,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-host.docker.internal}:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: "zook:2181"
+      KAFKA_BROKER_ID: 1
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    volumes:
+      - ./zk-single-kafka-single/kafka1/data:/var/lib/kafka/data
+    depends_on:
+      - zook
+    networks: [ "microservices" ]
+networks:
+  microservices:
+    name: microservices
